@@ -111,7 +111,7 @@ class DBCommands:
 async def create_db():
     await db.set_bind(f'postgresql://{db_user}:{db_pass}@{host}/gino')
 
-    # # Create tables
-    # db.gino: GinoSchemaVisitor
-    # await db.gino.drop_all()
-    # await db.gino.create_all()
+    # Create tables
+    db.gino: GinoSchemaVisitor
+    await db.gino.drop_all()
+    await db.gino.create_all()
