@@ -1,0 +1,33 @@
+version: '3.1'
+
+services:
+
+  db:
+    container_name: database
+    image: postgres
+    restart: always
+    ports:
+      - 5432:5432
+    env_file:
+      - ".env"
+#    network_mode: "host"
+
+  adminer:
+    container_name: adminer
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+#    network_mode: "host"
+
+  tgbot:
+    container_name: bot
+    build: .
+    volumes:
+      - .:/src
+    command: python app.py
+    restart: always
+    network_mode: "host"
+
+    env_file:
+      - ".env"
