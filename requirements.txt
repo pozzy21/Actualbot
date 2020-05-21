@@ -1,3 +1,5 @@
 sqlalchemy
 gino
 python-dotenv
+aiogram
+asyncpg
