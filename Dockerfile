@@ -1,6 +1,6 @@
 FROM python:latest
 
 RUN mkdir /src
-WORKdocker-DIR /src
+WORKDIR /src
 COPY . /src
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txtt
