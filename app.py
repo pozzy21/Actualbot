@@ -1,6 +1,5 @@
 import asyncio
 import logging
-
 from aiogram import executor
 
 from config import admin_id
@@ -21,4 +20,4 @@ if __name__ == '__main__':
     from admin_panel import dp
     from handlers import dp
 
-    executor.start_polling(dp, on_shutdown=on_shutdown, on_startup=on_startup)
+    executor.start_polling(dp, on_shutdown=on_shutdown, on_startup=on_startup, skip_updates=True)

@@ -17,3 +17,8 @@ class NewItem(StatesGroup):
 class Mailing(StatesGroup):
     Text = State()
     Language = State()
+
+
+class Support(StatesGroup):
+    Supporting = State()
+

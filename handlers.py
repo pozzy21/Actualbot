@@ -1,11 +1,14 @@
 import asyncio
 import datetime
+import apiai
+import json
+from aiogram.utils.emoji import emojize
 
 from aiogram import types
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters import CommandStart
 from aiogram.types import (Message, InlineKeyboardMarkup, InlineKeyboardButton,
-                           CallbackQuery, LabeledPrice, PreCheckoutQuery)
+                           CallbackQuery, LabeledPrice,ReplyKeyboardMarkup, PreCheckoutQuery)
 from aiogram.utils.callback_data import CallbackData
 
 import database
@@ -27,16 +30,20 @@ async def register_user(message: types.Message):
     user = await db.add_new_user(referral=referral)
     id = user.id
     count_users = await db.count_users()
+    count_items = await db.count_items()
+
 
     # клавиатура с выбором языков
+
     languages_markup = InlineKeyboardMarkup(
         inline_keyboard=
         [
             [
-                InlineKeyboardButton(text="Русский", callback_data="lang_ru")],
+                InlineKeyboardButton(text="🇷🇺"+"  Русский", callback_data="lang_ru")],
             [
-                InlineKeyboardButton(text="English", callback_data="lang_en"),
-                InlineKeyboardButton(text="Україньска", callback_data="lang_uk"),
+                InlineKeyboardButton(text="🇬🇧"+"  English", callback_data="lang_en"),
+                InlineKeyboardButton(text="🇺🇦"+"  Україньска", callback_data="lang_uk"),
+
             ]
         ]
     )
@@ -47,15 +54,18 @@ async def register_user(message: types.Message):
     # Для многоязычности, все тексты, передаваемые пользователю должны передаваться в функцию "_"
     # Вместо "текст" передаем _("текст")
 
-    text = _("Приветствую вас!!\n"
-             "Сейчас в базе {count_users} человек!\n"
+    text = _("🖐🏻Добро пожаловать!\n"
+             "✅Сейчас в базе имеется порядка {count_items} товаров!\n"
              "\n"
-             "Ваша реферальная ссылка: {bot_link}\n"
-             "Проверить рефералов можно по команде: /referrals\n"
-             "Просмотреть товары: /items").format(
+             "😺Нашими услугами пользуются {count_users} человек!\n"
+             "😇Ваша реферальная ссылка: {bot_link}\n"
+             "🤗Проверить рефералов можно по команде: /referrals\n"
+             "👀Просмотреть товары: /items").format(
         count_users=count_users,
-        bot_link=bot_link
+        count_items=count_items,
+        bot_link=bot_link,
     )
+
     if message.from_user.id == admin_id:
         text += _("\n"
                   "Добавить новый товар: /add_item")
@@ -223,13 +233,13 @@ async def approval(call: CallbackQuery, state: FSMContext):
     # Теперь можно внести данные о покупке в базу данных через .create()
     await purchase.create()
     await bot.send_message(chat_id=call.from_user.id,
-                           text=_("Хорошо. Оплатите <b>{amount:,}</b> по методу указанному ниже и нажмите "
+                           text=_("Хорошо. Оплатите по методу указанному ниже и нажмите "
                                   "на кнопку ниже").format(amount=purchase.amount))
 
     currency = "RUB"
     need_name = True
-    need_phone_number = False
-    need_email = False
+    need_phone_number = True
+    need_email = True
     need_shipping_address = True
 
     await bot.send_invoice(chat_id=call.from_user.id,
@@ -274,9 +284,34 @@ async def checkout(query: PreCheckoutQuery, state: FSMContext):
         await bot.send_message(query.from_user.id, _("Покупка не была подтверждена, попробуйте позже..."))
 
 
-@dp.message_handler()
-async def other_echo(message: Message):
-    await message.answer(message.text)
+#@dp.message_handler()
+#async def other_echo(message: Message):
+#    await message.answer(message.text)
+
+@dp.message_handler(commands="help", state = "*")
+async def ai_support(message: Message):
+    await message.reply.sendDice()
+
+
+@dp.callback_query_handler(state = states.Support.Supporting)
+async def ai_go(message: Message):
+
+    await message.answer("123")
+
+
+
+
+@dp.message_handler(commands="set_commands", state="*")
+async def cmd_set_commands(message: types.Message):
+    if message.from_user.id == admin_id:  # Подставьте сюда свой Telegram ID
+        commands = [types.BotCommand(command="/start", description="Начать работу"),
+                    types.BotCommand(command="/referral", description="Проверить рефералов"),
+                    types.BotCommand(command="/items", description="Просмотреть товары")]
+        await bot.set_my_commands(commands)
+        await message.answer("Команды настроены.")
+
+
+
 
 
 async def check_payment(purchase: database.Purchase):

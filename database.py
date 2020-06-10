@@ -89,6 +89,11 @@ class DBCommands:
     async def count_users(self) -> int:
         total = await db.func.count(User.id).gino.scalar()
         return total
+    async def count_items(self) -> int:
+        total = await db.func.count(Item.id).gino.scalar()
+        return total
+
+
 
     async def check_referrals(self):
         bot = Bot.get_current()
