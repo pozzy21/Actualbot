@@ -37,7 +37,7 @@ async def register_user(message: types.Message):
     # default row_width is 3, so here we can omit it actually
     # kept for clearness
     welcome_text = _("🖐🏻Добро пожаловать!")
-    btns_text = ('👀Просмотреть комнаты','☺Связь с менеджером', '😇Ваши рефералы')
+    btns_text = ('👀Комнаты','☺Помощь', '😇Рефералы')
     keyboard_markup.row(*(types.KeyboardButton(text) for text in btns_text))
     await bot.send_message(chat_id, welcome_text, reply_markup=keyboard_markup)
     await asyncio.sleep(0.3)
@@ -72,7 +72,6 @@ async def register_user(message: types.Message):
         count_items=count_items + 15,
         bot_link=bot_link,
     )
-    photo = "https://i.ytimg.com/vi/o8zW__Tewqs/maxresdefault.jpg"
 
     if message.from_user.id == admin_id:
         text += _("____________________________\n"
@@ -218,7 +217,7 @@ async def enter_quantity(message: Message, state: FSMContext):
     )
     await message.answer(
         _("Отлично!    \n"
-          "Вы желаете забронировать номер \"{name}\" \n"
+          "Вы желаете забронировать \"{name}\" \n"
           "на <i>{quantity}</i> суток \n"
           "по цене <b>{price:,} за сутки.</b>\n"
           "____________________________________\n"

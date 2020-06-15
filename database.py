@@ -49,40 +49,23 @@ class Item(db.Model):
 class Purchase(db.Model):
     __tablename__ = 'purchases'
     query: sql.Select
-
     id = Column(Integer, autoincrement=True, primary_key=True)
     buyer = Column(BigInteger)
     item_id = Column(Integer)
     item_name = Column(String)
-    amount = Column(Integer)  # Цена в копейках (потом делим на 100)
+    amount = Column(Integer)  # Цена в копейках
     quantity = Column(Integer)
     purchase_time = Column(TIMESTAMP)
     shipping_address = Column(JSON)
     phone_number = Column(String(50))
     email = Column(String(200))
     receiver = Column(String(100))
+
+
     successful = Column(Boolean, default=False)
     delivered = Column(Boolean, default=False)
 
-    # class Cart:
-    #     def __init__(self):
-    #         self.items = list()
-    #
-    #     def add_item(self, purchase: "Purchase"):
-    #         self.items.append(purchase)
-    #
-    #     def calculate_total_price(self):
-    #         return sum(
-    #             [
-    #                 item.price for item in self.items
-    #             ]
-    #         )
-    #
-    #     def submit(self):
-    #         for item in self.items:
-    #             item.successful = True
-    #             item.apply()
-    #
+
 
 class DBCommands:
 

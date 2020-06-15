@@ -52,12 +52,10 @@ async def add_photo(message: types.Message, state: FSMContext):
     data = await state.get_data()
     item: Item = data.get("item")
     item.photo = photo
-
     await message.answer_photo(
         photo=photo,
         caption=_(
                   "\nПришлите мне цену товара в копейках или введите /cancel"))
-
     await NewItem.Price.set()
     await state.update_data(item=item)
 
@@ -165,7 +163,9 @@ async def show_orders(message: types.Message, state:FSMContext):
                      "<b>Имя Клиента:</b> \t <u>{name}</u>\n"
                      "<b>Итоговый чек:</b> \t{amount:,}RUB\n"
                      "<b>E-mail: \t<u>{email}</u></b>\n"
-                     "<b>Номер телефона: \t<u>{phone_number}</u></b>")
+                     "<b>Номер телефона: \t<u>{phone_number}</u></b>\n"
+                     "<b>Время: \t<u>{purchase_time}</u></b>\n"
+                     "<b>Количество дней: \t<u>{quantity}</u></b>")
         for num, occup in enumerate(all_items):
             confirm = occup
         await message.answer(text.format(
@@ -176,6 +176,8 @@ async def show_orders(message: types.Message, state:FSMContext):
                     amount=order.amount / 100,
                     email=order.email,
                     phone_number = order.phone_number,
+                    purchase_time = order.purchase_time,
+                    quantity = order.quantity
                 ), reply_markup=orders_markup)
 
         await state.update_data(confirm1=occup)
