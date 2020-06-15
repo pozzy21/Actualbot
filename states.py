@@ -10,6 +10,7 @@ class Purchase(StatesGroup):
 class NewItem(StatesGroup):
     Name = State()
     Photo = State()
+    Description = State()
     Price = State()
     Confirm = State()
 
@@ -19,6 +20,8 @@ class Mailing(StatesGroup):
     Language = State()
 
 
-class Support(StatesGroup):
-    Supporting = State()
+class Confirming(StatesGroup):
+    Confirm1 = State()
+    Confirm2 = State()
+
 

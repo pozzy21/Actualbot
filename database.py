@@ -16,9 +16,9 @@ db = Gino()
 class User(db.Model):
     __tablename__ = 'users'
 
-    id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
+    id = Column(Integer, autoincrement=True, primary_key=True)
     user_id = Column(BigInteger)
-    language = Column(String(2))
+    language = Column(String(2),default='ru')
     full_name = Column(String(100))
     username = Column(String(50))
     referral = Column(Integer)
@@ -33,23 +33,27 @@ class Item(db.Model):
     __tablename__ = 'items'
     query: sql.Select
 
-    id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
-    name = Column(String(50))
+    id = Column(Integer, autoincrement=True, primary_key=True)
+    name = Column(String(300))
     photo = Column(String(250))
-    price = Column(Integer)  # Цена в копейках (потом делим на 100)
+    price = Column(Integer)
+    description = Column(String(1000))
+    occupied = Column(Boolean, default=False)
+
 
     def __repr__(self):
-        return "<Item(id='{}', name='{}', price='{}')>".format(
-            self.id, self.name, self.price)
+        return "<Item(id='{}', name='{}', price='{}',description ='{}')>".format(
+            self.id, self.name, self.price,self.description)
 
 
 class Purchase(db.Model):
     __tablename__ = 'purchases'
     query: sql.Select
 
-    id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
+    id = Column(Integer, autoincrement=True, primary_key=True)
     buyer = Column(BigInteger)
     item_id = Column(Integer)
+    item_name = Column(String)
     amount = Column(Integer)  # Цена в копейках (потом делим на 100)
     quantity = Column(Integer)
     purchase_time = Column(TIMESTAMP)
@@ -58,7 +62,27 @@ class Purchase(db.Model):
     email = Column(String(200))
     receiver = Column(String(100))
     successful = Column(Boolean, default=False)
+    delivered = Column(Boolean, default=False)
 
+    # class Cart:
+    #     def __init__(self):
+    #         self.items = list()
+    #
+    #     def add_item(self, purchase: "Purchase"):
+    #         self.items.append(purchase)
+    #
+    #     def calculate_total_price(self):
+    #         return sum(
+    #             [
+    #                 item.price for item in self.items
+    #             ]
+    #         )
+    #
+    #     def submit(self):
+    #         for item in self.items:
+    #             item.successful = True
+    #             item.apply()
+    #
 
 class DBCommands:
 
@@ -113,10 +137,23 @@ class DBCommands:
         return items
 
 
+    async def show_orders(self):
+        orders = await Purchase.query.gino.all()
+        occupied = await Item.query.gino.all()
+        return orders, occupied
+
+    async def true_occupied(self):
+        await Item.update(occupied = True).where(Item.id == 1).gino.status()
+
+
 async def create_db():
     await db.set_bind(f'postgresql://{db_user}:{db_pass}@{host}/gino')
 
+# async def switch_bool():
+#     await user.update(nickname='daisy').apply()
+
+
     # Create tables
     db.gino: GinoSchemaVisitor
-    await db.gino.drop_all()
+    #await db.gino.drop_all()
     await db.gino.create_all()

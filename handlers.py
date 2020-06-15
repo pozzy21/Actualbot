@@ -12,6 +12,7 @@ from aiogram.types import (Message, InlineKeyboardMarkup, InlineKeyboardButton,
 from aiogram.utils.callback_data import CallbackData
 
 import database
+
 import states
 from config import lp_token, admin_id
 from load_all import dp, bot, _
@@ -31,7 +32,15 @@ async def register_user(message: types.Message):
     id = user.id
     count_users = await db.count_users()
     count_items = await db.count_items()
-
+##
+    keyboard_markup = types.ReplyKeyboardMarkup(row_width=3,resize_keyboard=True)
+    # default row_width is 3, so here we can omit it actually
+    # kept for clearness
+    welcome_text = _("🖐🏻Добро пожаловать!")
+    btns_text = ('👀Просмотреть комнаты','☺Связь с менеджером', '😇Ваши рефералы')
+    keyboard_markup.row(*(types.KeyboardButton(text) for text in btns_text))
+    await bot.send_message(chat_id, welcome_text, reply_markup=keyboard_markup)
+    await asyncio.sleep(0.3)
 
     # клавиатура с выбором языков
 
@@ -54,22 +63,31 @@ async def register_user(message: types.Message):
     # Для многоязычности, все тексты, передаваемые пользователю должны передаваться в функцию "_"
     # Вместо "текст" передаем _("текст")
 
-    text = _("🖐🏻Добро пожаловать!\n"
-             "✅Сейчас в базе имеется порядка {count_items} товаров!\n"
+    text = _("\n"
              "\n"
-             "😺Нашими услугами пользуются {count_users} человек!\n"
+             "😺В данный момент нашими услугами пользуются <b>{count_users} человек!</b>\n"
              "😇Ваша реферальная ссылка: {bot_link}\n"
-             "🤗Проверить рефералов можно по команде: /referrals\n"
-             "👀Просмотреть товары: /items").format(
-        count_users=count_users,
-        count_items=count_items,
+             "👀Просмотреть каталог комнат можно по нажатию на соответствующие кнопки!\n").format(
+        count_users=count_users + 12,
+        count_items=count_items + 15,
         bot_link=bot_link,
     )
+    photo = "https://i.ytimg.com/vi/o8zW__Tewqs/maxresdefault.jpg"
 
     if message.from_user.id == admin_id:
-        text += _("\n"
-                  "Добавить новый товар: /add_item")
-    await bot.send_message(chat_id, text, reply_markup=languages_markup)
+        text += _("____________________________\n"
+                  "<b>ПАНЕЛЬ АДМИНИСТРАТОРА:</b>\n"
+                  "Добавить новый товар: /add_item\n"
+                  "Просмотреть активные заказы : /show_orders\n"
+                  "Сделать массовую рассылку: /tell_everyone \n")
+    await bot.send_photo(chat_id, caption=text,
+                         photo="AgACAgIAAxkBAAILe17mEby95kQBtKiPDnrDwJ1Ud6_CAAKDrjEblDExS8zpTPqVna7fKEF9kS4AAwEAAwIAA3gAA1N0BAABGgQ",
+                         reply_markup=languages_markup)
+
+@dp.message_handler(text_contains = '☺') #Связь с менеджером
+async def admin_contact(message:Message):
+    await bot.send_contact(chat_id=message.from_user.id, phone_number = '+79246811768',first_name = 'Pavel', last_name='Prutkov')
+
 
 
 # Альтернативно можно использовать фильтр text_contains, он улавливает то, что указано в call.data
@@ -84,7 +102,7 @@ async def change_language(call: CallbackQuery):
     await call.message.answer(_("Ваш язык был изменен", locale=lang))
 
 
-@dp.message_handler(commands=["referrals"])
+@dp.message_handler(text_contains = '😇') # Рефералы
 async def check_referrals(message: types.Message):
     referrals = await db.check_referrals()
     text = _("Ваши рефералы:\n{referrals}").format(referrals=referrals)
@@ -92,37 +110,45 @@ async def check_referrals(message: types.Message):
 
 
 # Показываем список доступных товаров
-@dp.message_handler(commands=["items"])
+@dp.message_handler(text_contains = '👀') #комнаты
 async def show_items(message: Message):
+    await bot.send_message(chat_id = message.from_user.id,text="В данный момент у нас свободны эти комнаты: \n"
+                           )
+    await asyncio.sleep(0.5)
     # Достаем товары из базы данных
     all_items = await db.show_items()
     # Проходимся по товарам
     for num, item in enumerate(all_items):
-        text = _("<b>Товар:</b> \t <u>{name}</u>\n"
-                 "<b>Цена:</b> \t{price:,}\n")
-        markup = InlineKeyboardMarkup(
-            inline_keyboard=
-            [
+        if not item.occupied:
+            text = _('\t <u>{name}</u>\n'
+                     '<b>Описание:</b> \t {description}\n'
+                     '<b>Цена:</b> \t{price:,}0 RUB за сутки\n')
+            markup = InlineKeyboardMarkup(
+                inline_keyboard=
                 [
-                    # Создаем кнопку "купить" и передаем ее айдишник в функцию создания коллбека
-                    InlineKeyboardButton(text=_("Купить"), callback_data=buy_item.new(item_id=item.id))
-                ],
-            ]
-        )
+                    [
+                        # Создаем кнопку "купить" и передаем ее айдишник в функцию создания коллбека
+                        InlineKeyboardButton(text=_("Забронировать"), callback_data=buy_item.new(item_id=item.id))
+                    ],
+                ]
+            )
 
         # Отправляем фотку товара с подписью и кнопкой "купить"
-        await message.answer_photo(
-            photo=item.photo,
-            caption=text.format(
-                id=item.id,
-                name=item.name,
-                price=item.price / 100
-            ),
-            reply_markup=markup
-        )
-        # Между сообщениями делаем небольшую задержку, чтобы не упереться в лимиты
-        await asyncio.sleep(0.3)
-
+            await message.answer_photo(
+                photo=item.photo,
+                caption=text.format(
+                    id=item.id,
+                    name=item.name,
+                    description = item.description,
+                    price=item.price / 100
+                ),
+                reply_markup=markup
+            )
+            # Между сообщениями делаем небольшую задержку, чтобы не упереться в лимиты
+            await asyncio.sleep(0.5)
+    await bot.send_message(chat_id = message.from_user.id,
+                           text = "Если у вас возникли вопросы вы можете обратиться к менеджеру\n"
+                                   "нажав соотвествующую клавишу в меню ниже👇👇👇👇👇")
 
 # Для фильтрования по коллбекам можно использовать buy_item.filter()
 @dp.callback_query_handler(buy_item.filter())
@@ -137,8 +163,9 @@ async def buying_item(call: CallbackQuery, callback_data: dict, state: FSMContex
         await call.message.answer(_("Такого товара не существует"))
         return
 
-    text = _("Вы хотите купить товар \"<b>{name}</b>\" по цене: <i>{price:,}/шт.</i>\n"
-             "Введите количество или нажмите отмена").format(name=item.name,
+    text = _("Вы хотите забронировать \"<b>{name}</b>\" \n"
+             "Размер <b>ежедневной оплаты состовляет</b>: <i>{price:,}/сутки.</i>\n"
+             "<u>Введите</u> на сколько дней вы планируете остаться у нас.").format(name=item.name,
                                                              price=item.price / 100)
     await call.message.answer(text)
     await states.Purchase.EnterQuantity.set()
@@ -149,7 +176,8 @@ async def buying_item(call: CallbackQuery, callback_data: dict, state: FSMContex
         purchase=database.Purchase(
             item_id=item_id,
             purchase_time=datetime.datetime.now(),
-            buyer=call.from_user.id
+            buyer=call.from_user.id,
+            item_name = item.name
         )
     )
 
@@ -167,15 +195,15 @@ async def enter_quantity(message: Message, state: FSMContext):
 
     # Создаем кнопки
     agree_button = InlineKeyboardButton(
-        text=_("Согласен"),
+        text=_("👌Все верно!👌"),
         callback_data="agree"
     )
     change_button = InlineKeyboardButton(
-        text=_("Ввести количество заново"),
+        text=_("🤦‍♀Ввести количество заново🤦‍♂"),
         callback_data="change"
     )
     cancel_button = InlineKeyboardButton(
-        text=_("Отменить покупку"),
+        text=_("🙅‍♀Отменить покупку🙅‍♂"),
         callback_data="cancel"
     )
 
@@ -189,8 +217,13 @@ async def enter_quantity(message: Message, state: FSMContext):
         ]
     )
     await message.answer(
-        _("Хорошо, вы хотите купить <i>{quantity}</i> {name} по цене <b>{price:,}/шт.</b>\n\n"
-          "Получится <b>{amount:,}</b>. Подтверждаете?").format(
+        _("Отлично!    \n"
+          "Вы желаете забронировать номер \"{name}\" \n"
+          "на <i>{quantity}</i> суток \n"
+          "по цене <b>{price:,} за сутки.</b>\n"
+          "____________________________________\n"
+          "Общаю сумма составляет: <u><b>{amount:,}0</b></u>.\n"
+          "Подтверждаете?").format(
             quantity=quantity,
             name=item.name,
             amount=amount / 100,
@@ -203,14 +236,14 @@ async def enter_quantity(message: Message, state: FSMContext):
 # То, что не является числом - не попало в предыдущий хендлер и попадает в этот
 @dp.message_handler(state=states.Purchase.EnterQuantity)
 async def not_quantity(message: Message):
-    await message.answer(_("Неверное значение, введите число"))
+    await message.answer(_("Неверное значение, введите число (* ￣︿￣)"))
 
 
 # Если человек нажал на кнопку Отменить во время покупки - убираем все
 @dp.callback_query_handler(text_contains="cancel", state=states.Purchase)
 async def approval(call: CallbackQuery, state: FSMContext):
     await call.message.edit_reply_markup()  # Убираем кнопки
-    await call.message.answer(_("Вы отменили эту покупку"))
+    await call.message.answer(_("Вы отменили эту покупку (* ￣︿￣)"))
     await state.reset_state()
 
 
@@ -218,8 +251,10 @@ async def approval(call: CallbackQuery, state: FSMContext):
 @dp.callback_query_handler(text_contains="change", state=states.Purchase.Approval)
 async def approval(call: CallbackQuery):
     await call.message.edit_reply_markup()  # Убираем кнопки
-    await call.message.answer(_("Введите количество товара заново."))
+    await call.message.answer(_("Введите количество товара заново.   "))
     await states.Purchase.EnterQuantity.set()
+
+
 
 
 # Если человек нажал "согласен"
@@ -233,14 +268,16 @@ async def approval(call: CallbackQuery, state: FSMContext):
     # Теперь можно внести данные о покупке в базу данных через .create()
     await purchase.create()
     await bot.send_message(chat_id=call.from_user.id,
-                           text=_("Хорошо. Оплатите по методу указанному ниже и нажмите "
-                                  "на кнопку ниже").format(amount=purchase.amount))
+                           text=_("Прекрасно, осталось только оплатить!\n"
+                                  "Произвести оплату можно по кнопке, которая вот-вот появится!\n"
+                                  ).format(amount=purchase.amount))
+    await asyncio.sleep(0.5)
 
     currency = "RUB"
     need_name = True
     need_phone_number = True
     need_email = True
-    need_shipping_address = True
+    need_shipping_address = False
 
     await bot.send_invoice(chat_id=call.from_user.id,
                            title=item.name,
@@ -279,24 +316,23 @@ async def checkout(query: PreCheckoutQuery, state: FSMContext):
             email=query.order_info.email
         ).apply()
         await state.reset_state()
-        await bot.send_message(query.from_user.id, _("Спасибо за покупку"))
+        await bot.send_message(query.from_user.id, _("Спасибо за то, что выбрали нас   \(@^0^@)/"))
+        await bot.send_message(query.from_user.id, _("Помните, что хостел — это общежитие.\n"
+                                                     "•Уважайте личное пространство других людей.\n"
+                                                     "•Соблюдайте тишину.\n"
+                                                     "•Не сорите!\n"
+                                                     "•Присматривате за своими вещами.\n"
+                                                     "•Возьмите с собой одежду для сна, беруши и повязку на глаза.\n"
+                                                     "•И самое главное - <b>общайтесь!</b>"))
+
     else:
-        await bot.send_message(query.from_user.id, _("Покупка не была подтверждена, попробуйте позже..."))
+        await bot.send_message(query.from_user.id, _("Оплата не была подтверждена, попробуйте позже..."))
 
 
 #@dp.message_handler()
 #async def other_echo(message: Message):
 #    await message.answer(message.text)
 
-@dp.message_handler(commands="help", state = "*")
-async def ai_support(message: Message):
-    await message.reply.sendDice()
-
-
-@dp.callback_query_handler(state = states.Support.Supporting)
-async def ai_go(message: Message):
-
-    await message.answer("123")
 
 
 
@@ -309,9 +345,6 @@ async def cmd_set_commands(message: types.Message):
                     types.BotCommand(command="/items", description="Просмотреть товары")]
         await bot.set_my_commands(commands)
         await message.answer("Команды настроены.")
-
-
-
 
 
 async def check_payment(purchase: database.Purchase):
