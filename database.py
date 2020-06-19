@@ -69,6 +69,7 @@ class Purchase(db.Model):
 
 class DBCommands:
 
+
     async def get_user(self, user_id):
         user = await User.query.where(User.user_id == user_id).gino.first()
         return user

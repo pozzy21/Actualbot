@@ -3,6 +3,7 @@ import datetime
 import apiai
 import json
 from aiogram.utils.emoji import emojize
+import logging
 
 from aiogram import types
 from aiogram.dispatcher import FSMContext
@@ -12,50 +13,148 @@ from aiogram.types import (Message, InlineKeyboardMarkup, InlineKeyboardButton,
 from aiogram.utils.callback_data import CallbackData
 
 import database
-
 import states
 from config import lp_token, admin_id
 from load_all import dp, bot, _
+import asyncio
+
+from aiogram import Bot, Dispatcher, executor, types
+from aiogram.contrib.fsm_storage.redis import RedisStorage2
+from aiogram.dispatcher import DEFAULT_RATE_LIMIT
+from aiogram.dispatcher.handler import CancelHandler, current_handler
+from aiogram.dispatcher.middlewares import BaseMiddleware
+from aiogram.utils.exceptions import Throttled
 
 db = database.DBCommands()
+logging.basicConfig(level=logging.INFO)
 
 # Используем CallbackData для работы с коллбеками, в данном случае для работы с покупкой товаров
 buy_item = CallbackData("buy", "item_id")
 
+def rate_limit(limit: int, key=None):
+    """
+    Decorator for configuring rate limit and key in different functions.
+
+    :param limit:
+    :param key:
+    :return:
+    """
+
+    def decorator(func):
+        setattr(func, 'throttling_rate_limit', limit)
+        if key:
+            setattr(func, 'throttling_key', key)
+        return func
+
+    return decorator
+
+
+class ThrottlingMiddleware(BaseMiddleware):
+    """
+    Simple middleware
+    """
+
+    def __init__(self, limit=DEFAULT_RATE_LIMIT, key_prefix='antiflood_'):
+        self.rate_limit = limit
+        self.prefix = key_prefix
+        super(ThrottlingMiddleware, self).__init__()
+
+    async def on_process_message(self, message: types.Message, data: dict):
+        """
+        This handler is called when dispatcher receives a message
+
+        :param message:
+        """
+        # Get current handler
+        handler = current_handler.get()
+
+        # Get dispatcher from context
+        dispatcher = Dispatcher.get_current()
+        # If handler was configured, get rate limit and key from handler
+        if handler:
+            limit = getattr(handler, 'throttling_rate_limit', self.rate_limit)
+            key = getattr(handler, 'throttling_key', f"{self.prefix}_{handler.__name__}")
+        else:
+            limit = self.rate_limit
+            key = f"{self.prefix}_message"
+
+        # Use Dispatcher.throttle method.
+        try:
+            await dispatcher.throttle(key, rate=limit)
+        except Throttled as t:
+            # Execute action
+            await self.message_throttled(message, t)
+
+            # Cancel current handler
+            raise CancelHandler()
+
+    async def message_throttled(self, message: types.Message, throttled: Throttled):
+        """
+        Notify user only on first exceed and notify about unlocking only on last exceed
+
+        :param message:
+        :param throttled:
+        """
+        handler = current_handler.get()
+        dispatcher = Dispatcher.get_current()
+        if handler:
+            key = getattr(handler, 'throttling_key', f"{self.prefix}_{handler.__name__}")
+        else:
+            key = f"{self.prefix}_message"
+
+        # Calculate how many time is left till the block ends
+        delta = throttled.rate - throttled.delta
+
+        # Prevent flooding
+        if throttled.exceeded_count <= 2:
+            await message.reply('Слишком много одинаковых запросов!\n'
+                                'Попробуйте через 5 секунд.')
+
+        # Sleep.
+        await asyncio.sleep(delta)
+
+        # Check lock status
+        thr = await dispatcher.check_key(key)
+
+        # If current message is not last with current key - do not send message
+        if thr.exceeded_count == throttled.exceeded_count:
+            await message.reply('Unlocked.')
 
 # Для команды /start есть специальный фильтр, который можно тут использовать
-@dp.message_handler(CommandStart())
+@dp.message_handler(commands=['start'])
+@rate_limit(5, 'start')
 async def register_user(message: types.Message):
+    welcome_text = _("🖐🏻Добро пожаловать!")
     chat_id = message.from_user.id
     referral = message.get_args()
     user = await db.add_new_user(referral=referral)
     id = user.id
     count_users = await db.count_users()
     count_items = await db.count_items()
-##
-    keyboard_markup = types.ReplyKeyboardMarkup(row_width=3,resize_keyboard=True)
-    # default row_width is 3, so here we can omit it actually
-    # kept for clearness
-    welcome_text = _("🖐🏻Добро пожаловать!")
-    btns_text = ('👀Комнаты','☺Помощь', '😇Рефералы')
-    keyboard_markup.row(*(types.KeyboardButton(text) for text in btns_text))
-    await bot.send_message(chat_id, welcome_text, reply_markup=keyboard_markup)
-    await asyncio.sleep(0.3)
-
     # клавиатура с выбором языков
-
     languages_markup = InlineKeyboardMarkup(
         inline_keyboard=
         [
             [
-                InlineKeyboardButton(text="🇷🇺"+"  Русский", callback_data="lang_ru")],
+                InlineKeyboardButton(text="🇷🇺" + "  Русский", callback_data="lang_ru")],
             [
-                InlineKeyboardButton(text="🇬🇧"+"  English", callback_data="lang_en"),
-                InlineKeyboardButton(text="🇺🇦"+"  Україньска", callback_data="lang_uk"),
+                InlineKeyboardButton(text="🇬🇧" + "  English", callback_data="lang_en"),
+                InlineKeyboardButton(text="🇺🇦" + "  Україньска", callback_data="lang_uk"),
 
             ]
         ]
     )
+
+##
+    keyboard_markup = types.ReplyKeyboardMarkup(row_width=3,resize_keyboard=True)
+    # default row_width is 3, so here we can omit it actually
+    # kept for clearness
+    btns_text = ('👀Комнаты','☺Помощь', '😇Рефералы','')
+    keyboard_markup.row(*(types.KeyboardButton(text) for text in btns_text))
+    await bot.send_message(chat_id, welcome_text, reply_markup=keyboard_markup)
+    await asyncio.sleep(0.3)
+
+
 
     bot_username = (await bot.me).username
     bot_link = f"https://t.me/{bot_username}?start={id}"
@@ -66,24 +165,60 @@ async def register_user(message: types.Message):
     text = _("\n"
              "\n"
              "😺В данный момент нашими услугами пользуются <b>{count_users} человек!</b>\n"
-             "😇Ваша реферальная ссылка: {bot_link}\n"
+             "😇Ваша реферальная ссылка:\n {bot_link}\n"
              "👀Просмотреть каталог комнат можно по нажатию на соответствующие кнопки!\n").format(
         count_users=count_users + 12,
         count_items=count_items + 15,
         bot_link=bot_link,
     )
 
-    if message.from_user.id == admin_id:
-        text += _("____________________________\n"
-                  "<b>ПАНЕЛЬ АДМИНИСТРАТОРА:</b>\n"
-                  "Добавить новый товар: /add_item\n"
-                  "Просмотреть активные заказы : /show_orders\n"
-                  "Сделать массовую рассылку: /tell_everyone \n")
+    # if message.from_user.id == admin_id:
+    #     text += _("____________________________\n"
+    #               "<b>ПАНЕЛЬ АДМИНИСТРАТОРА:</b>\n"
+    #               "Добавить новый товар: /add_item\n"
+    #               "Просмотреть активные заказы : /show_orders\n"
+    #               "Сделать массовую рассылку: /tell_everyone \n"
+    #               "Добавить нового администратора: /add_admin")
     await bot.send_photo(chat_id, caption=text,
                          photo="AgACAgIAAxkBAAILe17mEby95kQBtKiPDnrDwJ1Ud6_CAAKDrjEblDExS8zpTPqVna7fKEF9kS4AAwEAAwIAA3gAA1N0BAABGgQ",
                          reply_markup=languages_markup)
+    admin_markup = InlineKeyboardMarkup
+    if message.from_user.id == admin_id:
+        admin_text = "<b>Вы являетесь администратором.</b>\n"
+        admin_markup = types.ReplyKeyboardMarkup(row_width=3, resize_keyboard=True)
+        # default row_width is 3, so here we can omit it actually
+        # kept for clearness
+        btns_text = ('👀Комнаты', '☺Помощь', '😇Рефералы', '😎Администрирование')
+        admin_markup.row(*(types.KeyboardButton(text) for text in btns_text))
+        await bot.send_message(chat_id = admin_id, text = admin_text,reply_markup = admin_markup)
+
+
+@dp.message_handler(text_contains = "😎")#Администрирование
+async def admin_inline(message : Message):
+    text =_("Панель администратора представлена ниже: \n")
+    admin_markup = InlineKeyboardMarkup(
+        inline_keyboard=
+        [
+            [
+                InlineKeyboardButton(text="Добавить товар", callback_data="add_items")],
+
+            [
+                InlineKeyboardButton(text="Актуальные заказы", callback_data="show_orders"),
+                InlineKeyboardButton(text="Рассылка", callback_data="tell_everyone"),
+
+            ],
+            [
+                InlineKeyboardButton(text="Редактировать товар", callback_data="edit_item")
+
+            ]
+
+        ]
+    )
+    await bot.send_message(chat_id = message.from_user.id, text = text, reply_markup = admin_markup)
+
 
 @dp.message_handler(text_contains = '☺') #Связь с менеджером
+@rate_limit(5, '☺')
 async def admin_contact(message:Message):
     await bot.send_contact(chat_id=message.from_user.id, phone_number = '+79246811768',first_name = 'Pavel', last_name='Prutkov')
 
@@ -339,12 +474,15 @@ async def checkout(query: PreCheckoutQuery, state: FSMContext):
 @dp.message_handler(commands="set_commands", state="*")
 async def cmd_set_commands(message: types.Message):
     if message.from_user.id == admin_id:  # Подставьте сюда свой Telegram ID
-        commands = [types.BotCommand(command="/start", description="Начать работу"),
-                    types.BotCommand(command="/referral", description="Проверить рефералов"),
-                    types.BotCommand(command="/items", description="Просмотреть товары")]
+        commands = [types.BotCommand(command="/start", description="Начать работу")]
         await bot.set_my_commands(commands)
         await message.answer("Команды настроены.")
 
 
 async def check_payment(purchase: database.Purchase):
     return True
+
+
+
+# In this example Redis storage is used
+

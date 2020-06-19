@@ -6,6 +6,13 @@ class Purchase(StatesGroup):
     Approval = State()
     Payment = State()
 
+class Edit(StatesGroup):
+    EditName = State()
+    EditDesc = State()
+    EditPrice = State()
+    Confirm = State()
+
+
 
 class NewItem(StatesGroup):
     Name = State()

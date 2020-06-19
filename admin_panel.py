@@ -6,7 +6,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from config import admin_id
 from load_all import dp, _, bot
-from states import NewItem, Mailing, Confirming
+from states import NewItem, Mailing, Confirming,Edit
 from database import Item, User, Purchase
 import database
 
@@ -14,15 +14,27 @@ import database
 db = database.DBCommands()
 
 
+
+
 @dp.message_handler(user_id=admin_id, commands=["cancel"], state=NewItem)
 async def cancel(message: types.Message, state: FSMContext):
     await message.answer(_("Вы отменили создание услуги"))
     await state.reset_state()
 
+@dp.message_handler(user_id=admin_id, commands=["cancel"], state=Mailing)
+async def cancel(message: types.Message, state: FSMContext):
+    await message.answer(_("Вы отменили рассылку"))
+    await state.reset_state()
 
-@dp.message_handler(user_id=admin_id, commands=["add_item"])
-async def add_item(message: types.Message):
-    await message.answer(_("Введите название услуги или введите /cancel"))
+@dp.message_handler(user_id=admin_id, commands=["cancel"], state=Confirming)
+async def cancel(message: types.Message, state: FSMContext):
+    await message.answer(_("Вы вышли из панели просмотра заявок"))
+    await state.reset_state()
+
+
+@dp.callback_query_handler(user_id=admin_id,text_contains="add_item")
+async def add_item(call:types.CallbackQuery):
+    await bot.send_message(chat_id = admin_id, text= _("Введите название услуги или введите /cancel"))
     await NewItem.Name.set()
 
 
@@ -101,11 +113,16 @@ async def enter_price(call: types.CallbackQuery, state: FSMContext):
     await call.message.answer(_("Услуга удачно создана."))
     await state.reset_state()
 
+# @dp.message_handler(user_id = admin_id, text_contains = '/add_admin')
+# async def add_admin(message: Message):
+
+
 
 # Фича для рассылки по юзерам (учитывая их язык)
-@dp.message_handler(user_id=admin_id, commands=["tell_everyone"])
-async def mailing(message: types.Message):
-    await message.answer(_("Пришлите текст рассылки"))
+@dp.callback_query_handler(user_id=admin_id, text_contains = "tell_everyone")
+async def mailing(call: types.CallbackQuery):
+    await bot.send_message(chat_id = admin_id, text=_("Пришлите текст рассылки"))
+    await call.message.edit_reply_markup()
     await Mailing.Text.set()
 
 
@@ -145,8 +162,10 @@ async def mailing_start(call: types.CallbackQuery, state: FSMContext):
             pass
     await call.message.answer(_("Рассылка выполнена."))
 
-@dp.message_handler(user_id=admin_id,text_contains = "/show_orders")
-async def show_orders(message: types.Message, state:FSMContext):
+@dp.callback_query_handler(user_id=admin_id,text_contains = "show_orders")
+async def show_orders(call:types.CallbackQuery, state:FSMContext):
+    await call.message.edit_reply_markup()
+    await bot.send_message(chat_id = admin_id, text = "Актуальные заявки:")
     all_orders, all_items = await db.show_orders()
     orders_markup = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -168,7 +187,7 @@ async def show_orders(message: types.Message, state:FSMContext):
                      "<b>Количество дней: \t<u>{quantity}</u></b>")
         for num, occup in enumerate(all_items):
             confirm = occup
-        await message.answer(text.format(
+        await bot.send_message(chat_id = admin_id, text = text.format(
                     id = order.id,
                     item_id = order.item_id,
                     item_name=order.item_name,
@@ -179,7 +198,7 @@ async def show_orders(message: types.Message, state:FSMContext):
                     purchase_time = order.purchase_time,
                     quantity = order.quantity
                 ), reply_markup=orders_markup)
-
+        await bot.send_message(chat_id = admin_id, text = "Чтобы вернуться введите /cancel")
         await state.update_data(confirm1=occup)
         await Confirming.Confirm1.set()
 
@@ -198,20 +217,4 @@ async def confirm_order(call: types.CallbackQuery,state: FSMContext):
         text = _("Комната с номером <b>{id}</b> отмечена как свободная\n")
         await state.finish()
 
-
-    await bot.send_message(text = text.format(
-        id = confirm1.id,),chat_id = admin_id)
-
-
-@dp.callback_query_handler(text_contains = "release", state=Confirming.Confirm1)
-async def release_order(call: types.CallbackQuery,state: FSMContext):
-    await call.message.edit_reply_markup()
-    data = await state.get_data()
-    confirm1 = data.get("confirm1")
-    await confirm1.update(occupied=False).apply()
-    await state.finish()
-    text = _("Заказ с номером <b>{id}</b> на сумму <u>{amount}0</u> отмечен как выполненый\n"
-             )
-
-
-
+    await bot.send_message(text = text.format(id = confirm1.id),chat_id = admin_id)
